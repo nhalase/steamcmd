@@ -1,0 +1,65 @@
+FROM ubuntu:latest AS base
+
+LABEL maintainer="nhalase"
+
+# Bootstrapping variables
+# Best practice is to not use uid/gid under 10000
+ENV UID=10000 \
+    GID=10001 \
+    TZ=UTC
+
+RUN set -x \
+  # Create unprivileged user
+  && groupadd steam --gid ${GID} \
+  && useradd --uid ${UID} --gid ${GID} --create-home --shell /bin/bash steam
+
+FROM base AS build-stage
+ARG DEBIAN_FRONTEND=noninteractive
+
+LABEL description="A Docker image for running the linux SteamCMD binary"
+
+RUN set -x \
+  && apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y --no-install-recommends --no-install-suggests \
+      lib32gcc-s1 \
+      ca-certificates \
+      curl \
+      tzdata \
+      git \
+      locales \
+      gcc \
+      libc-dev \
+  && curl -o /usr/local/bin/su-exec.c https://raw.githubusercontent.com/ncopa/su-exec/master/su-exec.c \
+  && gcc -Wall /usr/local/bin/su-exec.c -o/usr/local/bin/su-exec \
+  && chown root:root /usr/local/bin/su-exec \
+  && chmod 0755 /usr/local/bin/su-exec \
+  && rm /usr/local/bin/su-exec.c \
+  && sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+  && dpkg-reconfigure -f noninteractive locales \
+  && update-locale LANG=en_US.UTF-8 \
+  # Download SteamCMD, execute as user
+  && su - "steam" -c \
+    "mkdir -p \"/home/steam/steamcmd\" \
+      && curl -fsSL 'https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz' | tar xvzf - -C \"/home/steam/steamcmd\" \
+      && chmod +x /home/steam/steamcmd/steamcmd.sh \
+      && \"./steamcmd/steamcmd.sh\" +quit \
+      && mkdir -p \"/home/steam/.steam/sdk32\" \
+      && ln -s \"/home/steam/steamcmd/linux32/steamclient.so\" \"/home/steam/.steam/sdk32/steamclient.so\" \
+      && ln -s \"/home/steam/steamcmd/linux32/steamcmd\" \"/home/steam/steamcmd/linux32/steam\" \
+      && ln -s \"/home/steam/steamcmd/steamcmd.sh\" \"/home/steam/steamcmd/steam.sh\"" \
+  # Symlink steamclient.so; So misconfigured dedicated servers can find it
+  && ln -s "/home/steam/steamcmd/linux64/steamclient.so" "/usr/lib/x86_64-linux-gnu/steamclient.so" \
+  # Clean up
+  && apt-get remove --purge --auto-remove -y \
+  && rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
+
+FROM build-stage AS steamcmd
+
+WORKDIR /home/steam/steamcmd
+
+COPY --chown=root:root --chmod=755 docker-entrypoint.sh /usr/bin/docker-entrypoint.sh
+
+ENTRYPOINT [ "docker-entrypoint.sh", "/home/steam/steamcmd/steamcmd.sh" ]
+
+CMD [ "+help", "+quit" ]
