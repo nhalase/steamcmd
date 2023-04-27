@@ -11,11 +11,18 @@ on:
   workflow_dispatch:
 
 jobs:
+  check:
+    name: "Quality Check"
+    uses: ./.github/workflows/check.yaml
   build-and-publish-ubuntu:
     name: "Build and publish ubuntu version-specific images"
+    needs:
+      - check
     uses: ./.github/workflows/build-and-publish-ubuntu.yaml
     secrets: inherit
   build-and-publish-latest:
     name: "Build and publish latest images"
+    needs:
+      - check
     uses: ./.github/workflows/build-and-publish-latest.yaml
     secrets: inherit
