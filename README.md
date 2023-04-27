@@ -6,6 +6,8 @@
 
 A Docker image for running the linux SteamCMD binary.
 
+Fresh builds every 24-hours!
+
 ## Tags
 
 - [`ubuntu`, `latest`](./Dockerfile.ubuntu) - will always follow the latest ubuntu LTS
